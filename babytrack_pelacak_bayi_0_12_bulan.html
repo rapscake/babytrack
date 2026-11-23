@@ -1,0 +1,2190 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>BabyTrack — Pelacak Makan & Pertumbuhan Bayi (0–12 Bulan)</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Plus Jakarta Sans & Inter -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap" rel="stylesheet" />
+  <!-- Chart.js for WHO Growth Curves -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            cream: {
+              50: '#FDFCFA',
+              100: '#FAF8F5',
+              200: '#F2EDE4',
+              300: '#E5DDD0',
+            },
+            sage: {
+              50: '#F3F7F4',
+              100: '#E3ECE5',
+              200: '#C6D9CA',
+              400: '#94B39A',
+              500: '#7C9A82',
+              600: '#5B7A62',
+              700: '#46604C',
+              800: '#35493A',
+            },
+            terracotta: {
+              100: '#FBECE8',
+              500: '#D97B66',
+              600: '#C2634E',
+            },
+            amberwarm: {
+              100: '#FDF3E1',
+              500: '#D99B38',
+              600: '#B87E22',
+            }
+          },
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            display: ['Plus Jakarta Sans', 'sans-serif'],
+          },
+          boxShadow: {
+            'soft': '0 4px 20px -2px rgba(91, 122, 98, 0.08)',
+            'card': '0 2px 12px rgba(45, 55, 48, 0.04)',
+            'nav': '0 -4px 20px rgba(45, 55, 48, 0.06)',
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    body {
+      background-color: #EFECE6;
+      color: #2C352E;
+      font-family: 'Inter', sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .app-shell {
+      background-color: #FAF8F5;
+      min-height: 100vh;
+      max-width: 480px;
+      margin: 0 auto;
+      position: relative;
+      box-shadow: 0 0 40px rgba(0, 0, 0, 0.06);
+      display: flex;
+      flex-direction: column;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 4px;
+      height: 4px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #C6D9CA;
+      border-radius: 999px;
+    }
+    /* Smooth view transitions */
+    .view-section {
+      display: none;
+      animation: fadeSlideUp 0.25s ease-out;
+    }
+    .view-section.active {
+      display: block;
+    }
+    @keyframes fadeSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(8px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    /* Pulse ring for active timer */
+    @keyframes softPulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.03); opacity: 0.92; }
+    }
+    .timer-active-ring {
+      animation: softPulse 2s infinite ease-in-out;
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-sage-200 selection:text-sage-800">
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed top-4 left-1/2 -translate-x-1/2 z-50 w-[90%] max-w-[420px] pointer-events-none flex flex-col gap-2"></div>
+
+  <!-- Custom Confirmation Modal (No native alert/confirm) -->
+  <div id="confirm-modal" class="fixed inset-0 z-50 hidden items-center justify-center bg-black/40 backdrop-blur-xs p-4">
+    <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-xl border border-cream-200 animate-[fadeSlideUp_0.2s_ease-out]">
+      <div class="w-12 h-12 rounded-2xl bg-terracotta-100 text-terracotta-600 flex items-center justify-center mb-4">
+        <i data-lucide="alert-circle" class="w-6 h-6"></i>
+      </div>
+      <h3 id="confirm-title" class="font-display font-bold text-lg text-gray-800 mb-1">Hapus Catatan?</h3>
+      <p id="confirm-message" class="text-sm text-gray-500 mb-6">Data yang dihapus tidak dapat dikembalikan lagi.</p>
+      <div class="flex gap-3">
+        <button id="confirm-cancel-btn" class="flex-1 py-3 px-4 rounded-2xl bg-cream-100 hover:bg-cream-200 text-gray-700 font-semibold text-sm transition">
+          Batal
+        </button>
+        <button id="confirm-ok-btn" class="flex-1 py-3 px-4 rounded-2xl bg-terracotta-500 hover:bg-terracotta-600 text-white font-semibold text-sm transition shadow-sm">
+          Ya, Hapus
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Mobile App Container -->
+  <div class="app-shell">
+
+    <!-- ==================== LOADING SCREEN ==================== -->
+    <div id="loading-screen" class="flex-1 flex flex-col items-center justify-center p-8 text-center">
+      <div class="w-16 h-16 rounded-3xl bg-sage-500 text-white flex items-center justify-center shadow-soft mb-4">
+        <i data-lucide="baby" class="w-9 h-9"></i>
+      </div>
+      <h1 class="font-display font-extrabold text-2xl text-sage-800 tracking-tight">BabyTrack</h1>
+      <p class="text-sm text-gray-500 mt-1">Menghubungkan sinkronisasi cloud...</p>
+      <div class="mt-6 w-8 h-8 border-4 border-sage-200 border-t-sage-600 rounded-full animate-spin"></div>
+    </div>
+
+    <!-- ==================== AUTH SCREEN ==================== -->
+    <div id="auth-screen" class="hidden flex-1 flex flex-col justify-between p-6">
+      <div class="pt-6">
+        <div class="inline-flex items-center gap-2.5 bg-white px-3.5 py-2 rounded-2xl shadow-card border border-cream-200 mb-6">
+          <div class="w-8 h-8 rounded-xl bg-sage-500 text-white flex items-center justify-center">
+            <i data-lucide="baby" class="w-5 h-5"></i>
+          </div>
+          <span class="font-display font-bold text-sage-800 text-base">BabyTrack</span>
+        </div>
+
+        <h1 class="font-display font-extrabold text-2xl sm:text-3xl text-gray-800 leading-tight">
+          Pantau Tumbuh Kembang & Nutrisi Si Kecil
+        </h1>
+        <p class="text-sm text-gray-500 mt-2 leading-relaxed">
+          Catat jadwal menyusui, ASIP, MPASI, dan kurva pertumbuhan WHO 0–12 bulan. Sinkron otomatis antar perangkat Ayah & Bunda.
+        </p>
+
+        <!-- Auth Tabs -->
+        <div class="grid grid-cols-2 bg-cream-200/70 p-1 rounded-2xl mt-6">
+          <button type="button" id="tab-login-btn" onclick="switchAuthTab('login')" class="py-2.5 text-sm font-semibold rounded-xl bg-white text-sage-700 shadow-xs transition">
+            Masuk
+          </button>
+          <button type="button" id="tab-register-btn" onclick="switchAuthTab('register')" class="py-2.5 text-sm font-semibold rounded-xl text-gray-500 hover:text-gray-700 transition">
+            Daftar Baru
+          </button>
+        </div>
+
+        <!-- Email & Password Form -->
+        <form id="auth-form" class="mt-5 space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Alamat Email</label>
+            <div class="relative">
+              <i data-lucide="mail" class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+              <input type="email" id="auth-email" required placeholder="bunda@email.com"
+                class="w-full pl-10 pr-4 py-3 rounded-2xl bg-white border border-cream-300 focus:border-sage-500 focus:ring-2 focus:ring-sage-200 outline-none text-sm transition" />
+            </div>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Kata Sandi</label>
+            <div class="relative">
+              <i data-lucide="lock" class="w-4 h-4 text-gray-400 absolute left-3.5 top-1/2 -translate-y-1/2"></i>
+              <input type="password" id="auth-password" required minlength="6" placeholder="Minimal 6 karakter"
+                class="w-full pl-10 pr-4 py-3 rounded-2xl bg-white border border-cream-300 focus:border-sage-500 focus:ring-2 focus:ring-sage-200 outline-none text-sm transition" />
+            </div>
+          </div>
+
+          <button type="submit" id="auth-submit-btn"
+            class="w-full py-3.5 px-4 rounded-2xl bg-sage-600 hover:bg-sage-700 active:scale-[0.99] text-white font-semibold text-sm shadow-soft transition flex items-center justify-center gap-2">
+            <span>Masuk ke Akun</span>
+            <i data-lucide="arrow-right" class="w-4 h-4"></i>
+          </button>
+        </form>
+
+        <!-- Divider -->
+        <div class="relative my-5">
+          <div class="absolute inset-0 flex items-center">
+            <div class="w-full border-t border-cream-300"></div>
+          </div>
+          <div class="relative flex justify-center text-xs">
+            <span class="px-3 bg-cream-100 text-gray-400 font-medium">atau lanjutkan dengan</span>
+          </div>
+        </div>
+
+        <!-- Google & Instant Cloud Sync Buttons -->
+        <div class="space-y-2.5">
+          <button type="button" id="google-signin-btn"
+            class="w-full py-3 px-4 rounded-2xl bg-white hover:bg-cream-50 border border-cream-300 text-gray-700 font-semibold text-sm shadow-card transition flex items-center justify-center gap-3">
+            <svg class="w-5 h-5" viewBox="0 0 24 24">
+              <path fill="#4285F4" d="M23.745 12.27c0-.7-.06-1.4-.19-2.07H12v4.51h6.6c-.29 1.52-1.14 2.82-2.4 3.68v3.05h3.88c2.27-2.09 3.665-5.17 3.665-9.17Z"/>
+              <path fill="#34A853" d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.88-3.05c-1.08.72-2.45 1.16-4.05 1.16-3.12 0-5.77-2.11-6.72-4.96H1.29v3.14C3.26 21.3 7.31 24 12 24Z"/>
+              <path fill="#FBBC05" d="M5.28 14.24c-.24-.72-.38-1.49-.38-2.24s.14-1.52.38-2.24V6.62H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.38l3.99-3.14Z"/>
+              <path fill="#EA4335" d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.62l3.99 3.14c.95-2.85 3.6-4.96 6.72-4.96Z"/>
+            </svg>
+            <span>Masuk dengan Google</span>
+          </button>
+
+          <button type="button" id="guest-signin-btn"
+            class="w-full py-3 px-4 rounded-2xl bg-sage-50 hover:bg-sage-100 border border-sage-200 text-sage-700 font-semibold text-sm transition flex items-center justify-center gap-2">
+            <i data-lucide="sparkles" class="w-4 h-4"></i>
+            <span>Akses Cepat Cloud (Tanpa Kata Sandi)</span>
+          </button>
+        </div>
+      </div>
+
+      <p class="text-center text-xs text-gray-400 pt-6">
+        Data tersimpan aman & tersinkronisasi melalui Cloud Sync.
+      </p>
+    </div>
+
+    <!-- ==================== ONBOARDING / BABY SETUP SCREEN ==================== -->
+    <div id="setup-screen" class="hidden flex-1 flex flex-col justify-between p-6">
+      <div>
+        <div class="w-12 h-12 rounded-2xl bg-sage-100 text-sage-600 flex items-center justify-center mb-4">
+          <i data-lucide="heart-handshake" class="w-6 h-6"></i>
+        </div>
+        <h2 class="font-display font-extrabold text-2xl text-gray-800">Profil Si Kecil</h2>
+        <p class="text-sm text-gray-500 mt-1">
+          Lengkapi data bayi untuk menghitung usia akurat dan menyesuaikan kurva pertumbuhan standar WHO (0–12 bulan).
+        </p>
+
+        <form id="setup-form" class="mt-6 space-y-4">
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Nama Panggilan Bayi</label>
+            <input type="text" id="setup-name" required placeholder="Contoh: Arka / Aisyah"
+              class="w-full px-4 py-3 rounded-2xl bg-white border border-cream-300 focus:border-sage-500 focus:ring-2 focus:ring-sage-200 outline-none text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Tanggal Lahir</label>
+            <input type="date" id="setup-dob" required
+              class="w-full px-4 py-3 rounded-2xl bg-white border border-cream-300 focus:border-sage-500 focus:ring-2 focus:ring-sage-200 outline-none text-sm" />
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Jenis Kelamin (Standar Kurva WHO)</label>
+            <div class="grid grid-cols-2 gap-3">
+              <label class="cursor-pointer">
+                <input type="radio" name="setup-gender" value="L" class="peer sr-only" checked />
+                <div class="p-3.5 rounded-2xl bg-white border-2 border-cream-200 peer-checked:border-sage-500 peer-checked:bg-sage-50 text-center transition">
+                  <span class="text-xl block mb-1">👶🏻</span>
+                  <span class="text-sm font-semibold text-gray-700">Laki-laki</span>
+                </div>
+              </label>
+              <label class="cursor-pointer">
+                <input type="radio" name="setup-gender" value="P" class="peer sr-only" />
+                <div class="p-3.5 rounded-2xl bg-white border-2 border-cream-200 peer-checked:border-sage-500 peer-checked:bg-sage-50 text-center transition">
+                  <span class="text-xl block mb-1">👧🏻</span>
+                  <span class="text-sm font-semibold text-gray-700">Perempuan</span>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          <div class="grid grid-cols-2 gap-3 pt-1">
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Berat Lahir (kg)</label>
+              <input type="number" step="0.01" min="0.5" max="10" id="setup-birth-weight" placeholder="3.20"
+                class="w-full px-4 py-3 rounded-2xl bg-white border border-cream-300 focus:border-sage-500 outline-none text-sm" />
+            </div>
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Panjang Lahir (cm)</label>
+              <input type="number" step="0.1" min="25" max="75" id="setup-birth-length" placeholder="49.5"
+                class="w-full px-4 py-3 rounded-2xl bg-white border border-cream-300 focus:border-sage-500 outline-none text-sm" />
+            </div>
+          </div>
+
+          <button type="submit"
+            class="w-full mt-4 py-3.5 px-4 rounded-2xl bg-sage-600 hover:bg-sage-700 text-white font-semibold text-sm shadow-soft transition">
+            Simpan & Mulai Mencatat
+          </button>
+        </form>
+
+        <!-- Option to Join Existing Family Sync Code -->
+        <div class="mt-6 pt-5 border-t border-cream-300">
+          <p class="text-xs font-semibold text-gray-600 mb-2">Sudah punya Kode Keluarga dari pasangan?</p>
+          <div class="flex gap-2">
+            <input type="text" id="join-family-code-input" placeholder="Tempel Kode Sinkronisasi..."
+              class="flex-1 px-3.5 py-2.5 rounded-xl bg-white border border-cream-300 text-xs focus:border-sage-500 outline-none" />
+            <button type="button" id="join-family-btn"
+              class="px-4 py-2.5 rounded-xl bg-cream-200 hover:bg-cream-300 text-gray-700 font-semibold text-xs transition">
+              Gabung
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== MAIN APP WORKSPACE ==================== -->
+    <div id="main-app" class="hidden flex-1 flex flex-col pb-24">
+
+      <!-- Top Sticky Header -->
+      <header class="sticky top-0 z-30 bg-cream-100/90 backdrop-blur-md px-5 pt-4 pb-3 border-b border-cream-200/80">
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div id="header-avatar" class="w-11 h-11 rounded-2xl bg-sage-500 text-white font-display font-bold text-lg flex items-center justify-center shadow-xs">
+              B
+            </div>
+            <div>
+              <div class="flex items-center gap-2">
+                <h1 id="header-baby-name" class="font-display font-bold text-base text-gray-800">Si Kecil</h1>
+                <span id="header-gender-badge" class="text-[11px] font-semibold px-2 py-0.5 rounded-full bg-sage-100 text-sage-700">Laki-laki</span>
+              </div>
+              <p id="header-baby-age" class="text-xs text-gray-500 font-medium mt-0.5">Usia: 0 bulan 0 hari</p>
+            </div>
+          </div>
+
+          <!-- Cloud Sync Status Pill -->
+          <div id="sync-status-badge" class="flex items-center gap-1.5 bg-white px-2.5 py-1.5 rounded-full border border-cream-200 shadow-2xs" title="Tersinkronisasi dengan Cloud">
+            <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+            <span class="text-[11px] font-semibold text-gray-600">Cloud Aktif</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- Main Scrollable Content -->
+      <main class="flex-1 px-5 pt-4 space-y-5">
+
+        <!-- ==================== VIEW 1: BERANDA (DASHBOARD) ==================== -->
+        <section id="view-home" class="view-section active space-y-5">
+
+          <!-- Active Timer Banner (Appears when timer is running in background) -->
+          <div id="home-active-timer-banner" onclick="navigateTo('feeding')" class="hidden cursor-pointer bg-sage-600 text-white rounded-3xl p-4 shadow-soft flex items-center justify-between">
+            <div class="flex items-center gap-3">
+              <div class="w-10 h-10 rounded-2xl bg-white/20 flex items-center justify-center timer-active-ring">
+                <i data-lucide="timer" class="w-5 h-5"></i>
+              </div>
+              <div>
+                <p class="text-xs text-sage-100 font-medium">Menyusui Sedang Berjalan</p>
+                <p id="home-banner-timer-text" class="font-display font-bold text-base">00:00 • Sisi Kiri</p>
+              </div>
+            </div>
+            <span class="text-xs font-semibold bg-white text-sage-700 px-3 py-1.5 rounded-xl">Buka</span>
+          </div>
+
+          <!-- Today's Summary Header -->
+          <div class="flex items-center justify-between">
+            <h2 class="font-display font-bold text-base text-gray-800">Ringkasan Hari Ini</h2>
+            <span id="today-date-label" class="text-xs text-gray-500 font-medium">Hari Ini</span>
+          </div>
+
+          <!-- 2x2 Summary Cards Grid -->
+          <div class="grid grid-cols-2 gap-3">
+            <!-- Card 1: ASI Langsung -->
+            <div onclick="navigateTo('feeding', 'asi')" class="cursor-pointer bg-white p-4 rounded-3xl shadow-card border border-cream-200/70 hover:border-sage-300 transition">
+              <div class="flex items-center justify-between mb-2.5">
+                <div class="w-9 h-9 rounded-2xl bg-sage-50 text-sage-600 flex items-center justify-center">
+                  <i data-lucide="clock" class="w-4 h-4"></i>
+                </div>
+                <span class="text-[11px] font-semibold text-sage-600 bg-sage-50 px-2 py-0.5 rounded-full">ASI Langsung</span>
+              </div>
+              <p id="stat-breast-total" class="font-display font-extrabold text-xl text-gray-800">0 mnt</p>
+              <p id="stat-breast-detail" class="text-xs text-gray-400 mt-0.5">Kiri 0m • Kanan 0m</p>
+            </div>
+
+            <!-- Card 2: Botol / ASIP -->
+            <div onclick="navigateTo('feeding', 'botol')" class="cursor-pointer bg-white p-4 rounded-3xl shadow-card border border-cream-200/70 hover:border-sage-300 transition">
+              <div class="flex items-center justify-between mb-2.5">
+                <div class="w-9 h-9 rounded-2xl bg-amberwarm-100 text-amberwarm-600 flex items-center justify-center">
+                  <i data-lucide="milk" class="w-4 h-4"></i>
+                </div>
+                <span class="text-[11px] font-semibold text-amberwarm-600 bg-amberwarm-100 px-2 py-0.5 rounded-full">Botol / ASIP</span>
+              </div>
+              <p id="stat-bottle-total" class="font-display font-extrabold text-xl text-gray-800">0 ml</p>
+              <p id="stat-bottle-count" class="text-xs text-gray-400 mt-0.5">0 kali minum</p>
+            </div>
+
+            <!-- Card 3: MPASI -->
+            <div onclick="navigateTo('feeding', 'mpasi')" class="cursor-pointer bg-white p-4 rounded-3xl shadow-card border border-cream-200/70 hover:border-sage-300 transition">
+              <div class="flex items-center justify-between mb-2.5">
+                <div class="w-9 h-9 rounded-2xl bg-terracotta-100 text-terracotta-600 flex items-center justify-center">
+                  <i data-lucide="utensils" class="w-4 h-4"></i>
+                </div>
+                <span class="text-[11px] font-semibold text-terracotta-600 bg-terracotta-100 px-2 py-0.5 rounded-full">MPASI</span>
+              </div>
+              <p id="stat-mpasi-count" class="font-display font-extrabold text-xl text-gray-800">0x makan</p>
+              <p id="stat-mpasi-last" class="text-xs text-gray-400 mt-0.5 truncate">Belum ada catatan</p>
+            </div>
+
+            <!-- Card 4: Pertumbuhan Terakhir -->
+            <div onclick="navigateTo('growth')" class="cursor-pointer bg-white p-4 rounded-3xl shadow-card border border-cream-200/70 hover:border-sage-300 transition">
+              <div class="flex items-center justify-between mb-2.5">
+                <div class="w-9 h-9 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center">
+                  <i data-lucide="trending-up" class="w-4 h-4"></i>
+                </div>
+                <span class="text-[11px] font-semibold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-full">Pertumbuhan</span>
+              </div>
+              <p id="stat-latest-weight" class="font-display font-extrabold text-xl text-gray-800">-- kg</p>
+              <p id="stat-latest-length" class="text-xs text-gray-400 mt-0.5">Panjang: -- cm</p>
+            </div>
+          </div>
+
+          <!-- Quick Action Buttons -->
+          <div class="bg-white p-4 rounded-3xl shadow-card border border-cream-200/70">
+            <p class="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-3">Catat Cepat</p>
+            <div class="grid grid-cols-3 gap-2.5">
+              <button onclick="navigateTo('feeding', 'asi')" class="py-3 px-2 rounded-2xl bg-sage-50 hover:bg-sage-100 text-sage-700 font-semibold text-xs flex flex-col items-center gap-1.5 transition">
+                <i data-lucide="play-circle" class="w-5 h-5 text-sage-600"></i>
+                <span>Timer ASI</span>
+              </button>
+              <button onclick="navigateTo('feeding', 'botol')" class="py-3 px-2 rounded-2xl bg-amberwarm-100/70 hover:bg-amberwarm-100 text-amberwarm-600 font-semibold text-xs flex flex-col items-center gap-1.5 transition">
+                <i data-lucide="plus-circle" class="w-5 h-5"></i>
+                <span>Botol ASIP</span>
+              </button>
+              <button onclick="navigateTo('growth')" class="py-3 px-2 rounded-2xl bg-blue-50/80 hover:bg-blue-100/70 text-blue-600 font-semibold text-xs flex flex-col items-center gap-1.5 transition">
+                <i data-lucide="ruler" class="w-5 h-5"></i>
+                <span>Ukur Berat</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Recent Feeding Activity Timeline -->
+          <div>
+            <div class="flex items-center justify-between mb-3">
+              <h3 class="font-display font-bold text-base text-gray-800">Riwayat Makan & Menyusui</h3>
+              <span id="history-count-badge" class="text-xs font-semibold text-sage-700 bg-sage-100 px-2.5 py-0.5 rounded-full">0 catatan</span>
+            </div>
+
+            <div id="feeding-timeline-list" class="space-y-2.5">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW 2: FEEDING TRACKER ==================== -->
+        <section id="view-feeding" class="view-section space-y-5">
+          <div>
+            <h2 class="font-display font-bold text-xl text-gray-800">Catat Makan & Menyusui</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Pilih jenis asupan untuk dicatat secara real-time.</p>
+          </div>
+
+          <!-- Sub-tabs: ASI Langsung | Botol / ASIP | MPASI -->
+          <div class="grid grid-cols-3 bg-cream-200/80 p-1 rounded-2xl">
+            <button type="button" id="feed-subtab-asi" onclick="switchFeedingTab('asi')" class="py-2.5 text-xs font-bold rounded-xl bg-white text-sage-700 shadow-xs transition">
+              ASI Langsung
+            </button>
+            <button type="button" id="feed-subtab-botol" onclick="switchFeedingTab('botol')" class="py-2.5 text-xs font-bold rounded-xl text-gray-500 hover:text-gray-700 transition">
+              Botol / ASIP
+            </button>
+            <button type="button" id="feed-subtab-mpasi" onclick="switchFeedingTab('mpasi')" class="py-2.5 text-xs font-bold rounded-xl text-gray-500 hover:text-gray-700 transition">
+              MPASI
+            </button>
+          </div>
+
+          <!-- PANEL A: ASI LANGSUNG (LIVE TIMER) -->
+          <div id="panel-feed-asi" class="space-y-4">
+            <div class="bg-white rounded-3xl p-6 shadow-card border border-cream-200/80 text-center">
+              <span id="timer-status-pill" class="inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-cream-100 text-gray-500 mb-4">
+                Siap Memulai Sesi
+              </span>
+
+              <!-- Total Session Clock -->
+              <div class="my-2">
+                <p id="timer-main-display" class="font-display font-extrabold text-5xl text-gray-800 tracking-tight tabular-nums">
+                  00:00
+                </p>
+                <p class="text-xs text-gray-400 mt-1">Total Durasi Sesi</p>
+              </div>
+
+              <!-- Left & Right Breast Interactive Controls -->
+              <div class="grid grid-cols-2 gap-3.5 mt-6">
+                <!-- Left Breast Button -->
+                <button type="button" id="btn-timer-left" onclick="toggleBreastTimer('Kiri')"
+                  class="p-4 rounded-3xl border-2 border-cream-200 bg-cream-50 hover:border-sage-400 transition flex flex-col items-center">
+                  <div class="w-11 h-11 rounded-2xl bg-white shadow-2xs flex items-center justify-center text-sage-600 font-display font-bold text-base mb-2" id="icon-timer-left">
+                    Kiri
+                  </div>
+                  <span id="display-left-time" class="font-display font-bold text-lg text-gray-800 tabular-nums">00:00</span>
+                  <span id="label-left-action" class="text-[11px] font-semibold text-sage-600 mt-1">Ketuk Mulai</span>
+                </button>
+
+                <!-- Right Breast Button -->
+                <button type="button" id="btn-timer-right" onclick="toggleBreastTimer('Kanan')"
+                  class="p-4 rounded-3xl border-2 border-cream-200 bg-cream-50 hover:border-sage-400 transition flex flex-col items-center">
+                  <div class="w-11 h-11 rounded-2xl bg-white shadow-2xs flex items-center justify-center text-sage-600 font-display font-bold text-base mb-2" id="icon-timer-right">
+                    Kanan
+                  </div>
+                  <span id="display-right-time" class="font-display font-bold text-lg text-gray-800 tabular-nums">00:00</span>
+                  <span id="label-right-action" class="text-[11px] font-semibold text-sage-600 mt-1">Ketuk Mulai</span>
+                </button>
+              </div>
+
+              <!-- Notes & Save Session -->
+              <div class="mt-5 text-left">
+                <input type="text" id="asi-notes" placeholder="Catatan opsional (misal: menyusu kuat, tertidur)..."
+                  class="w-full px-4 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-xs focus:border-sage-500 outline-none" />
+              </div>
+
+              <div class="flex gap-2.5 mt-4">
+                <button type="button" id="btn-reset-timer" onclick="resetBreastTimer()"
+                  class="py-3.5 px-4 rounded-2xl bg-cream-100 hover:bg-cream-200 text-gray-600 font-semibold text-xs transition">
+                  Reset
+                </button>
+                <button type="button" id="btn-save-timer" onclick="saveBreastfeedingSession()"
+                  class="flex-1 py-3.5 px-4 rounded-2xl bg-sage-600 hover:bg-sage-700 text-white font-semibold text-sm shadow-soft transition flex items-center justify-center gap-2">
+                  <i data-lucide="check-circle-2" class="w-4 h-4"></i>
+                  <span>Simpan Sesi Menyusui</span>
+                </button>
+              </div>
+            </div>
+
+            <!-- Manual ASI Entry Option -->
+            <details class="bg-white rounded-3xl p-4 shadow-card border border-cream-200/80">
+              <summary class="text-xs font-bold text-sage-700 cursor-pointer flex items-center justify-between">
+                <span>+ Input Manual Durasi ASI (Jika lupa menyalakan timer)</span>
+                <i data-lucide="chevron-down" class="w-4 h-4"></i>
+              </summary>
+              <form id="manual-asi-form" class="mt-4 space-y-3 pt-3 border-t border-cream-200">
+                <div class="grid grid-cols-2 gap-3">
+                  <div>
+                    <label class="block text-[11px] font-semibold text-gray-500 mb-1">Durasi Kiri (menit)</label>
+                    <input type="number" id="manual-asi-left" min="0" max="120" value="10"
+                      class="w-full px-3 py-2.5 rounded-xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+                  </div>
+                  <div>
+                    <label class="block text-[11px] font-semibold text-gray-500 mb-1">Durasi Kanan (menit)</label>
+                    <input type="number" id="manual-asi-right" min="0" max="120" value="10"
+                      class="w-full px-3 py-2.5 rounded-xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+                  </div>
+                </div>
+                <div>
+                  <label class="block text-[11px] font-semibold text-gray-500 mb-1">Waktu Menyusui</label>
+                  <input type="datetime-local" id="manual-asi-time"
+                    class="w-full px-3 py-2.5 rounded-xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+                </div>
+                <button type="submit" class="w-full py-3 rounded-2xl bg-sage-600 text-white font-semibold text-xs">
+                  Simpan Catatan Manual
+                </button>
+              </form>
+            </details>
+          </div>
+
+          <!-- PANEL B: BOTOL / ASIP / FORMULA -->
+          <div id="panel-feed-botol" class="hidden">
+            <form id="bottle-form" class="bg-white rounded-3xl p-5 shadow-card border border-cream-200/80 space-y-4">
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-2">Jenis Susu</label>
+                <div class="grid grid-cols-2 gap-2.5">
+                  <label class="cursor-pointer">
+                    <input type="radio" name="bottle-type" value="ASIP" class="peer sr-only" checked />
+                    <div class="py-3 px-3 rounded-2xl border-2 border-cream-200 peer-checked:border-amberwarm-500 peer-checked:bg-amberwarm-100/50 text-center text-xs font-bold text-gray-700 transition">
+                      🍼 ASI Perah (ASIP)
+                    </div>
+                  </label>
+                  <label class="cursor-pointer">
+                    <input type="radio" name="bottle-type" value="Susu Formula" class="peer sr-only" />
+                    <div class="py-3 px-3 rounded-2xl border-2 border-cream-200 peer-checked:border-amberwarm-500 peer-checked:bg-amberwarm-100/50 text-center text-xs font-bold text-gray-700 transition">
+                      🥛 Susu Formula
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <label class="text-xs font-semibold text-gray-600 uppercase tracking-wider">Volume (ml)</label>
+                  <span id="bottle-volume-badge" class="text-xs font-bold text-amberwarm-600 bg-amberwarm-100 px-2.5 py-0.5 rounded-full">90 ml</span>
+                </div>
+                <!-- Quick Volume Chips -->
+                <div class="grid grid-cols-5 gap-1.5 mb-3">
+                  <button type="button" onclick="setBottleVolume(30)" class="vol-chip py-2 rounded-xl bg-cream-100 hover:bg-amberwarm-100 text-xs font-bold text-gray-700 transition">30</button>
+                  <button type="button" onclick="setBottleVolume(60)" class="vol-chip py-2 rounded-xl bg-cream-100 hover:bg-amberwarm-100 text-xs font-bold text-gray-700 transition">60</button>
+                  <button type="button" onclick="setBottleVolume(90)" class="vol-chip py-2 rounded-xl bg-amberwarm-100 text-amberwarm-600 ring-1 ring-amberwarm-500 text-xs font-bold transition">90</button>
+                  <button type="button" onclick="setBottleVolume(120)" class="vol-chip py-2 rounded-xl bg-cream-100 hover:bg-amberwarm-100 text-xs font-bold text-gray-700 transition">120</button>
+                  <button type="button" onclick="setBottleVolume(150)" class="vol-chip py-2 rounded-xl bg-cream-100 hover:bg-amberwarm-100 text-xs font-bold text-gray-700 transition">150</button>
+                </div>
+                <input type="number" id="bottle-volume" required min="5" max="500" value="90" oninput="syncVolumeBadge(this.value)"
+                  class="w-full px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 focus:border-amberwarm-500 outline-none text-sm font-bold" />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Waktu Pemberian</label>
+                <input type="datetime-local" id="bottle-time" required
+                  class="w-full px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Catatan (Opsional)</label>
+                <input type="text" id="bottle-notes" placeholder="Contoh: Habis tak bersisa, sendawa lancar"
+                  class="w-full px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+              </div>
+
+              <button type="submit"
+                class="w-full py-3.5 px-4 rounded-2xl bg-amberwarm-500 hover:bg-amberwarm-600 text-white font-semibold text-sm shadow-soft transition">
+                Simpan Catatan Botol
+              </button>
+            </form>
+          </div>
+
+          <!-- PANEL C: MPASI (6-12 BULAN) -->
+          <div id="panel-feed-mpasi" class="hidden">
+            <form id="mpasi-form" class="bg-white rounded-3xl p-5 shadow-card border border-cream-200/80 space-y-4">
+              <div class="bg-sage-50 border border-sage-200/70 rounded-2xl p-3 flex items-start gap-2.5">
+                <i data-lucide="info" class="w-4 h-4 text-sage-600 shrink-0 mt-0.5"></i>
+                <p class="text-xs text-sage-800 leading-relaxed">
+                  Direkomendasikan mulai usia <strong>6 bulan</strong>. Catat menu dan reaksi alergi si kecil.
+                </p>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Jadwal Makan</label>
+                <select id="mpasi-schedule" class="w-full px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 text-sm font-medium outline-none">
+                  <option value="Makan Pagi">🌅 Makan Pagi</option>
+                  <option value="Makan Siang">☀️ Makan Siang</option>
+                  <option value="Makan Sore">🌇 Makan Sore</option>
+                  <option value="Camilan / Buah">🍌 Camilan / Buah</option>
+                </select>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Menu MPASI</label>
+                <input type="text" id="mpasi-menu" required placeholder="Contoh: Bubur saring hati ayam, wortel & kaldu"
+                  class="w-full px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 focus:border-terracotta-500 outline-none text-sm" />
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Porsi Dihabiskan</label>
+                <div class="grid grid-cols-3 gap-2">
+                  <label class="cursor-pointer">
+                    <input type="radio" name="mpasi-portion" value="Habis" class="peer sr-only" checked />
+                    <div class="py-2.5 rounded-xl border border-cream-200 peer-checked:border-terracotta-500 peer-checked:bg-terracotta-100/60 text-center text-xs font-bold text-gray-700">
+                      😋 Habis
+                    </div>
+                  </label>
+                  <label class="cursor-pointer">
+                    <input type="radio" name="mpasi-portion" value="Setengah" class="peer sr-only" />
+                    <div class="py-2.5 rounded-xl border border-cream-200 peer-checked:border-terracotta-500 peer-checked:bg-terracotta-100/60 text-center text-xs font-bold text-gray-700">
+                      🙂 Setengah
+                    </div>
+                  </label>
+                  <label class="cursor-pointer">
+                    <input type="radio" name="mpasi-portion" value="Sedikit" class="peer sr-only" />
+                    <div class="py-2.5 rounded-xl border border-cream-200 peer-checked:border-terracotta-500 peer-checked:bg-terracotta-100/60 text-center text-xs font-bold text-gray-700">
+                      🤏 Sedikit
+                    </div>
+                  </label>
+                </div>
+              </div>
+
+              <div>
+                <label class="block text-xs font-semibold text-gray-600 uppercase tracking-wider mb-1.5">Waktu & Reaksi</label>
+                <input type="datetime-local" id="mpasi-time" required
+                  class="w-full px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 text-sm outline-none mb-2.5" />
+                <input type="text" id="mpasi-notes" placeholder="Reaksi alergi / tekstur (misal: lahap, tidak ada ruam)"
+                  class="w-full px-4 py-3 rounded-2xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+              </div>
+
+              <button type="submit"
+                class="w-full py-3.5 px-4 rounded-2xl bg-terracotta-500 hover:bg-terracotta-600 text-white font-semibold text-sm shadow-soft transition">
+                Simpan Catatan MPASI
+              </button>
+            </form>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW 3: PERTUMBUHAN & KURVA WHO ==================== -->
+        <section id="view-growth" class="view-section space-y-5">
+          <div class="flex items-center justify-between">
+            <div>
+              <h2 class="font-display font-bold text-xl text-gray-800">Pertumbuhan & Kurva WHO</h2>
+              <p class="text-xs text-gray-500 mt-0.5">Standar WHO 0–12 bulan (<span id="who-gender-label">Laki-laki</span>)</p>
+            </div>
+            <button type="button" onclick="toggleGrowthForm()" id="btn-toggle-growth-form"
+              class="py-2 px-3.5 rounded-2xl bg-sage-600 hover:bg-sage-700 text-white font-semibold text-xs shadow-xs flex items-center gap-1.5 transition">
+              <i data-lucide="plus" class="w-4 h-4"></i>
+              <span>Catat Ukuran</span>
+            </button>
+          </div>
+
+          <!-- Collapsible Add Growth Measurement Form -->
+          <form id="growth-form" class="hidden bg-white rounded-3xl p-5 shadow-card border border-sage-200 space-y-4">
+            <div class="flex items-center justify-between">
+              <h3 class="font-display font-bold text-sm text-sage-800">Tambah Pengukuran Baru</h3>
+              <button type="button" onclick="toggleGrowthForm()" class="text-gray-400 hover:text-gray-600">
+                <i data-lucide="x" class="w-4 h-4"></i>
+              </button>
+            </div>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-600 mb-1">Tanggal Pengukuran</label>
+              <input type="date" id="growth-date" required
+                class="w-full px-3.5 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+            </div>
+
+            <div class="grid grid-cols-3 gap-2.5">
+              <div>
+                <label class="block text-[11px] font-semibold text-gray-600 mb-1">Berat (kg)*</label>
+                <input type="number" step="0.01" min="1" max="25" id="growth-weight" required placeholder="6.45"
+                  class="w-full px-3 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-sm font-bold outline-none" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-gray-600 mb-1">Panjang (cm)*</label>
+                <input type="number" step="0.1" min="35" max="110" id="growth-length" required placeholder="62.5"
+                  class="w-full px-3 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-sm font-bold outline-none" />
+              </div>
+              <div>
+                <label class="block text-[11px] font-semibold text-gray-600 mb-1">L. Kepala (cm)</label>
+                <input type="number" step="0.1" min="25" max="60" id="growth-head" placeholder="41.0"
+                  class="w-full px-3 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-sm font-bold outline-none" />
+              </div>
+            </div>
+
+            <button type="submit" class="w-full py-3 rounded-2xl bg-sage-600 hover:bg-sage-700 text-white font-semibold text-sm shadow-soft transition">
+              Simpan Data Pertumbuhan
+            </button>
+          </form>
+
+          <!-- Chart Metric Switcher: Berat Badan (BB/U) vs Panjang Badan (PB/U) -->
+          <div class="bg-white rounded-3xl p-4 shadow-card border border-cream-200/80">
+            <div class="grid grid-cols-2 bg-cream-100 p-1 rounded-2xl mb-4">
+              <button type="button" id="chart-tab-weight" onclick="switchGrowthChart('weight')"
+                class="py-2 text-xs font-bold rounded-xl bg-white text-sage-700 shadow-2xs transition">
+                Berat Badan (BB/U)
+              </button>
+              <button type="button" id="chart-tab-length" onclick="switchGrowthChart('length')"
+                class="py-2 text-xs font-bold rounded-xl text-gray-500 hover:text-gray-700 transition">
+                Panjang Badan (PB/U)
+              </button>
+            </div>
+
+            <!-- Chart Canvas Container -->
+            <div class="relative w-full h-64">
+              <canvas id="who-growth-chart"></canvas>
+            </div>
+
+            <!-- Legend Explanation -->
+            <div class="mt-3 pt-3 border-t border-cream-100 flex flex-wrap items-center justify-between gap-2 text-[11px] text-gray-500">
+              <div class="flex items-center gap-1.5">
+                <span class="w-3 h-3 rounded-full bg-sage-600 inline-block"></span>
+                <span class="font-semibold text-gray-700">Data Bayi Anda</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="w-3 h-0.5 bg-emerald-500 inline-block"></span>
+                <span>Median WHO (P50)</span>
+              </div>
+              <div class="flex items-center gap-1.5">
+                <span class="w-3 h-2 bg-sage-200/60 rounded-xs inline-block"></span>
+                <span>Rentang Normal (P3–P97)</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Growth Status Insight Card -->
+          <div id="growth-status-insight" class="bg-sage-50 border border-sage-200/80 rounded-3xl p-4 flex items-start gap-3">
+            <div class="w-9 h-9 rounded-2xl bg-sage-500 text-white flex items-center justify-center shrink-0">
+              <i data-lucide="sparkles" class="w-4 h-4"></i>
+            </div>
+            <div>
+              <h4 id="insight-title" class="font-display font-bold text-sm text-sage-800">Analisis Kurva WHO</h4>
+              <p id="insight-desc" class="text-xs text-sage-700 mt-0.5 leading-relaxed">
+                Tambahkan catatan berat & panjang badan untuk melihat posisi persentil si kecil dibanding standar WHO.
+              </p>
+            </div>
+          </div>
+
+          <!-- Growth Records List -->
+          <div>
+            <h3 class="font-display font-bold text-base text-gray-800 mb-3">Riwayat Pengukuran</h3>
+            <div id="growth-history-list" class="space-y-2.5">
+              <!-- Populated dynamically -->
+            </div>
+          </div>
+        </section>
+
+        <!-- ==================== VIEW 4: PROFIL & SINKRONISASI ==================== -->
+        <section id="view-profile" class="view-section space-y-5">
+          <div>
+            <h2 class="font-display font-bold text-xl text-gray-800">Profil Bayi & Cloud Sync</h2>
+            <p class="text-xs text-gray-500 mt-0.5">Kelola data si kecil dan bagikan akses dengan pasangan.</p>
+          </div>
+
+          <!-- Edit Baby Profile Form -->
+          <form id="edit-profile-form" class="bg-white rounded-3xl p-5 shadow-card border border-cream-200/80 space-y-4">
+            <h3 class="font-display font-bold text-sm text-gray-800 flex items-center gap-2">
+              <i data-lucide="baby" class="w-4 h-4 text-sage-600"></i>
+              <span>Data Identitas Bayi</span>
+            </h3>
+
+            <div>
+              <label class="block text-xs font-semibold text-gray-500 mb-1">Nama Bayi</label>
+              <input type="text" id="profile-name" required
+                class="w-full px-3.5 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-sm font-semibold outline-none" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">Tanggal Lahir</label>
+                <input type="date" id="profile-dob" required
+                  class="w-full px-3.5 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-sm outline-none" />
+              </div>
+              <div>
+                <label class="block text-xs font-semibold text-gray-500 mb-1">Jenis Kelamin</label>
+                <select id="profile-gender" class="w-full px-3.5 py-2.5 rounded-2xl bg-cream-100 border border-cream-200 text-sm font-medium outline-none">
+                  <option value="L">Laki-laki</option>
+                  <option value="P">Perempuan</option>
+                </select>
+              </div>
+            </div>
+
+            <button type="submit" class="w-full py-3 rounded-2xl bg-sage-600 hover:bg-sage-700 text-white font-semibold text-xs shadow-xs transition">
+              Perbarui Profil Bayi
+            </button>
+          </form>
+
+          <!-- Family Multi-Device Cloud Sync Card -->
+          <div class="bg-white rounded-3xl p-5 shadow-card border border-cream-200/80 space-y-3">
+            <div class="flex items-center gap-2">
+              <div class="w-8 h-8 rounded-xl bg-sage-100 text-sage-600 flex items-center justify-center">
+                <i data-lucide="users" class="w-4 h-4"></i>
+              </div>
+              <div>
+                <h3 class="font-display font-bold text-sm text-gray-800">Sinkronisasi Ayah & Bunda</h3>
+                <p class="text-[11px] text-gray-500">Bagikan kode ini agar pasangan bisa melihat & mencatat data bayi yang sama.</p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-2 bg-cream-100 p-2.5 rounded-2xl border border-cream-200">
+              <code id="family-sync-code-display" class="flex-1 text-xs font-mono text-gray-700 truncate px-1">---</code>
+              <button type="button" onclick="copyFamilyCode()" class="py-1.5 px-3 rounded-xl bg-white border border-cream-300 text-xs font-semibold text-sage-700 hover:bg-sage-50 transition flex items-center gap-1">
+                <i data-lucide="copy" class="w-3.5 h-3.5"></i>
+                <span>Salin</span>
+              </button>
+            </div>
+
+            <div class="pt-2">
+              <label class="block text-[11px] font-semibold text-gray-500 mb-1.5">Tautkan ke Kode Keluarga Lain:</label>
+              <div class="flex gap-2">
+                <input type="text" id="profile-join-code" placeholder="Masukkan kode keluarga pasangan..."
+                  class="flex-1 px-3 py-2 rounded-xl bg-cream-100 border border-cream-200 text-xs outline-none" />
+                <button type="button" onclick="joinFamilyFromProfile()" class="px-3.5 py-2 rounded-xl bg-sage-600 text-white font-semibold text-xs">
+                  Tautkan
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account & Sign Out -->
+          <div class="bg-white rounded-3xl p-5 shadow-card border border-cream-200/80 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <p class="text-xs text-gray-400">Akun Terhubung</p>
+                <p id="profile-account-email" class="text-sm font-semibold text-gray-800 mt-0.5">Pengguna Cloud</p>
+              </div>
+              <span class="text-[11px] font-semibold px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700">Tersinkronisasi</span>
+            </div>
+
+            <button type="button" id="logout-btn"
+              class="w-full py-3 px-4 rounded-2xl bg-terracotta-100 hover:bg-terracotta-500 hover:text-white text-terracotta-600 font-semibold text-xs transition flex items-center justify-center gap-2">
+              <i data-lucide="log-out" class="w-4 h-4"></i>
+              <span>Keluar dari Akun</span>
+            </button>
+          </div>
+        </section>
+
+      </main>
+
+      <!-- Bottom Navigation Bar -->
+      <nav class="fixed bottom-0 left-1/2 -translate-x-1/2 w-full max-w-[480px] bg-white/95 backdrop-blur-md border-t border-cream-200 px-3 py-2 z-40 shadow-nav">
+        <div class="grid grid-cols-4 gap-1">
+          <button type="button" onclick="navigateTo('home')" id="nav-btn-home"
+            class="nav-item flex flex-col items-center justify-center py-2 rounded-2xl text-sage-600 bg-sage-50 font-semibold transition">
+            <i data-lucide="home" class="w-5 h-5 mb-1"></i>
+            <span class="text-[11px]">Beranda</span>
+          </button>
+
+          <button type="button" onclick="navigateTo('feeding')" id="nav-btn-feeding"
+            class="nav-item flex flex-col items-center justify-center py-2 rounded-2xl text-gray-400 hover:text-gray-600 font-medium transition">
+            <i data-lucide="heart-pulse" class="w-5 h-5 mb-1"></i>
+            <span class="text-[11px]">Menyusui</span>
+          </button>
+
+          <button type="button" onclick="navigateTo('growth')" id="nav-btn-growth"
+            class="nav-item flex flex-col items-center justify-center py-2 rounded-2xl text-gray-400 hover:text-gray-600 font-medium transition">
+            <i data-lucide="line-chart" class="w-5 h-5 mb-1"></i>
+            <span class="text-[11px]">Kurva WHO</span>
+          </button>
+
+          <button type="button" onclick="navigateTo('profile')" id="nav-btn-profile"
+            class="nav-item flex flex-col items-center justify-center py-2 rounded-2xl text-gray-400 hover:text-gray-600 font-medium transition">
+            <i data-lucide="user-circle" class="w-5 h-5 mb-1"></i>
+            <span class="text-[11px]">Profil</span>
+          </button>
+        </div>
+      </nav>
+    </div>
+  </div>
+
+  <!-- ==================== APPLICATION LOGIC & FIREBASE CLOUD SYNC ==================== -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+    import {
+      getAuth,
+      signInAnonymously,
+      signInWithCustomToken,
+      signInWithEmailAndPassword,
+      createUserWithEmailAndPassword,
+      GoogleAuthProvider,
+      signInWithPopup,
+      signOut,
+      onAuthStateChanged
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+    import {
+      getFirestore,
+      doc,
+      getDoc,
+      setDoc,
+      addDoc,
+      deleteDoc,
+      onSnapshot,
+      collection
+    } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+    // ==================== 1. FIREBASE INITIALIZATION ====================
+    const appId = typeof __app_id !== 'undefined' ? __app_id : 'babytrack-id-default';
+    let firebaseConfig = null;
+    try {
+      if (typeof __firebase_config !== 'undefined' && __firebase_config) {
+        firebaseConfig = JSON.parse(__firebase_config);
+      }
+    } catch (e) {
+      console.warn("Firebase config parse fallback:", e);
+    }
+
+    let app, auth, db;
+    let isFirebaseReady = false;
+
+    if (firebaseConfig && firebaseConfig.apiKey) {
+      try {
+        app = initializeApp(firebaseConfig);
+        auth = getAuth(app);
+        db = getFirestore(app);
+        isFirebaseReady = true;
+      } catch (err) {
+        console.error("Firebase init error:", err);
+      }
+    }
+
+    // ==================== 2. WHO 0–12 MONTH GROWTH REFERENCE DATA ====================
+    // Standard WHO Child Growth Standards (0 to 12 months)
+    const WHO_STANDARDS = {
+      L: { // Laki-laki (Boys)
+        months: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        weight: { // kg (P3, P15, P50, P85, P97)
+          p3:  [2.5, 3.4, 4.4, 5.1, 5.6, 6.1, 6.4, 6.7, 7.0, 7.2, 7.5, 7.7, 7.8],
+          p15: [2.9, 3.9, 4.9, 5.6, 6.2, 6.7, 7.1, 7.4, 7.7, 7.9, 8.2, 8.4, 8.6],
+          p50: [3.3, 4.5, 5.6, 6.4, 7.0, 7.5, 7.9, 8.3, 8.6, 8.9, 9.2, 9.4, 9.6],
+          p85: [3.9, 5.1, 6.3, 7.2, 7.9, 8.4, 8.9, 9.3, 9.6, 10.0, 10.3, 10.5, 10.8],
+          p97: [4.3, 5.7, 7.0, 7.9, 8.6, 9.2, 9.7, 10.2, 10.5, 10.9, 11.2, 11.5, 11.8]
+        },
+        length: { // cm (P3, P15, P50, P85, P97)
+          p3:  [46.3, 51.1, 54.7, 57.6, 60.0, 61.9, 63.6, 65.1, 66.5, 67.7, 69.0, 70.2, 71.3],
+          p15: [48.0, 52.8, 56.4, 59.4, 61.8, 63.8, 65.5, 67.0, 68.4, 69.7, 71.0, 72.2, 73.4],
+          p50: [49.9, 54.7, 58.4, 61.4, 63.9, 65.9, 67.6, 69.2, 70.6, 72.0, 73.3, 74.5, 75.7],
+          p85: [51.8, 56.7, 60.4, 63.5, 66.0, 68.0, 69.8, 71.3, 72.8, 74.2, 75.6, 76.9, 78.1],
+          p97: [53.4, 58.4, 62.2, 65.3, 67.8, 69.9, 71.6, 73.2, 74.7, 76.2, 77.6, 78.9, 80.2]
+        }
+      },
+      P: { // Perempuan (Girls)
+        months: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+        weight: { // kg
+          p3:  [2.4, 3.2, 4.0, 4.6, 5.1, 5.5, 5.8, 6.1, 6.3, 6.6, 6.8, 7.0, 7.1],
+          p15: [2.8, 3.6, 4.5, 5.1, 5.6, 6.1, 6.4, 6.7, 7.0, 7.3, 7.5, 7.7, 7.9],
+          p50: [3.2, 4.2, 5.1, 5.8, 6.4, 6.9, 7.3, 7.6, 7.9, 8.2, 8.5, 8.7, 8.9],
+          p85: [3.7, 4.8, 5.9, 6.7, 7.3, 7.9, 8.3, 8.7, 9.1, 9.4, 9.7, 10.0, 10.2],
+          p97: [4.2, 5.4, 6.5, 7.4, 8.1, 8.7, 9.2, 9.6, 10.0, 10.4, 10.7, 11.0, 11.3]
+        },
+        length: { // cm
+          p3:  [45.6, 50.0, 53.2, 55.8, 58.0, 59.9, 61.5, 62.9, 64.3, 65.6, 66.8, 68.0, 69.2],
+          p15: [47.2, 51.7, 55.0, 57.6, 59.8, 61.7, 63.4, 64.9, 66.3, 67.6, 68.9, 70.1, 71.3],
+          p50: [49.1, 53.7, 57.1, 59.8, 62.1, 64.0, 65.7, 67.3, 68.7, 70.1, 71.5, 72.8, 74.0],
+          p85: [51.1, 55.7, 59.2, 62.0, 64.3, 66.3, 68.1, 69.6, 71.1, 72.6, 74.0, 75.3, 76.6],
+          p97: [52.7, 57.4, 60.9, 63.8, 66.2, 68.2, 70.0, 71.6, 73.2, 74.7, 76.1, 77.5, 78.9]
+        }
+      }
+    };
+
+    // ==================== 3. GLOBAL APP STATE ====================
+    const state = {
+      user: null,
+      familyId: null,
+      babyProfile: null,
+      feedings: [],
+      growthLogs: [],
+      unsubFeedings: null,
+      unsubGrowth: null,
+      unsubProfile: null,
+      activeChartMetric: 'weight', // 'weight' | 'length'
+      whoChartInstance: null,
+      authMode: 'login', // 'login' | 'register'
+      // Live Breastfeeding Timer State
+      timer: {
+        activeSide: null, // 'Kiri' | 'Kanan' | null
+        leftSeconds: 0,
+        rightSeconds: 0,
+        intervalId: null
+      }
+    };
+
+    // ==================== 4. UTILITY FUNCTIONS ====================
+    function showToast(message, type = 'success') {
+      const container = document.getElementById('toast-container');
+      const toast = document.createElement('div');
+      const styles = {
+        success: 'bg-sage-700 text-white border-sage-600',
+        error: 'bg-terracotta-600 text-white border-terracotta-500',
+        info: 'bg-gray-800 text-white border-gray-700'
+      };
+      toast.className = `${styles[type] || styles.success} px-4 py-3 rounded-2xl shadow-lg border text-xs font-semibold flex items-center justify-between gap-3 pointer-events-auto animate-[fadeSlideUp_0.2s_ease-out]`;
+      toast.innerHTML = `<span>${message}</span>`;
+      container.appendChild(toast);
+      setTimeout(() => {
+        toast.style.opacity = '0';
+        toast.style.transition = 'opacity 0.25s ease';
+        setTimeout(() => toast.remove(), 250);
+      }, 3200);
+    }
+
+    function openConfirmModal(title, message, onConfirm) {
+      const modal = document.getElementById('confirm-modal');
+      document.getElementById('confirm-title').textContent = title;
+      document.getElementById('confirm-message').textContent = message;
+      modal.classList.remove('hidden');
+      modal.classList.add('flex');
+
+      const cancelBtn = document.getElementById('confirm-cancel-btn');
+      const okBtn = document.getElementById('confirm-ok-btn');
+
+      const cleanup = () => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        cancelBtn.onclick = null;
+        okBtn.onclick = null;
+      };
+
+      cancelBtn.onclick = cleanup;
+      okBtn.onclick = () => {
+        cleanup();
+        onConfirm();
+      };
+    }
+
+    function formatDurationMMSS(totalSec) {
+      const mins = Math.floor(totalSec / 60);
+      const secs = totalSec % 60;
+      return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+    }
+
+    function getLocalDateTimeInputString(date = new Date()) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    }
+
+    function getLocalDateInputString(date = new Date()) {
+      const pad = (n) => String(n).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+    }
+
+    function calculateBabyAge(dobString, refDate = new Date()) {
+      const dob = new Date(dobString + 'T00:00:00');
+      if (isNaN(dob.getTime())) return { months: 0, days: 0, exactMonths: 0, text: '0 bulan 0 hari' };
+
+      let years = refDate.getFullYear() - dob.getFullYear();
+      let months = refDate.getMonth() - dob.getMonth() + years * 12;
+      let days = refDate.getDate() - dob.getDate();
+
+      if (days < 0) {
+        months -= 1;
+        const prevMonth = new Date(refDate.getFullYear(), refDate.getMonth(), 0);
+        days += prevMonth.getDate();
+      }
+      if (months < 0) {
+        months = 0;
+        days = 0;
+      }
+      const exactMonths = Math.max(0, Number((months + days / 30.4375).toFixed(2)));
+      return {
+        months,
+        days,
+        exactMonths,
+        text: `${months} bulan ${days} hari`
+      };
+    }
+
+    function formatTimeID(isoString) {
+      const d = new Date(isoString);
+      if (isNaN(d.getTime())) return '';
+      const today = new Date();
+      const isToday = d.toDateString() === today.toDateString();
+      const timePart = d.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+      if (isToday) return `Hari ini, ${timePart}`;
+      const datePart = d.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+      return `${datePart}, ${timePart}`;
+    }
+
+    // ==================== 5. SCREEN & NAVIGATION MANAGEMENT ====================
+    function showScreen(screenId) {
+      ['loading-screen', 'auth-screen', 'setup-screen', 'main-app'].forEach(id => {
+        const el = document.getElementById(id);
+        if (id === screenId) {
+          el.classList.remove('hidden');
+        } else {
+          el.classList.add('hidden');
+        }
+      });
+      lucide.createIcons();
+    }
+
+    window.navigateTo = function(viewName, subTab = null) {
+      document.querySelectorAll('.view-section').forEach(sec => sec.classList.remove('active'));
+      const target = document.getElementById(`view-${viewName}`);
+      if (target) target.classList.add('active');
+
+      // Update Bottom Nav Styles
+      document.querySelectorAll('.nav-item').forEach(btn => {
+        btn.classList.remove('text-sage-600', 'bg-sage-50', 'font-semibold');
+        btn.classList.add('text-gray-400', 'font-medium');
+      });
+      const activeNav = document.getElementById(`nav-btn-${viewName}`);
+      if (activeNav) {
+        activeNav.classList.remove('text-gray-400', 'font-medium');
+        activeNav.classList.add('text-sage-600', 'bg-sage-50', 'font-semibold');
+      }
+
+      if (viewName === 'feeding') {
+        const nowStr = getLocalDateTimeInputString();
+        document.getElementById('manual-asi-time').value = nowStr;
+        document.getElementById('bottle-time').value = nowStr;
+        document.getElementById('mpasi-time').value = nowStr;
+        if (subTab) switchFeedingTab(subTab);
+      } else if (viewName === 'growth') {
+        document.getElementById('growth-date').value = getLocalDateInputString();
+        renderWHOChart();
+      }
+      lucide.createIcons();
+    };
+
+    window.switchFeedingTab = function(tab) {
+      ['asi', 'botol', 'mpasi'].forEach(t => {
+        const btn = document.getElementById(`feed-subtab-${t}`);
+        const panel = document.getElementById(`panel-feed-${t}`);
+        if (t === tab) {
+          btn.classList.add('bg-white', 'text-sage-700', 'shadow-xs');
+          btn.classList.remove('text-gray-500');
+          panel.classList.remove('hidden');
+        } else {
+          btn.classList.remove('bg-white', 'text-sage-700', 'shadow-xs');
+          btn.classList.add('text-gray-500');
+          panel.classList.add('hidden');
+        }
+      });
+    };
+
+    // ==================== 6. AUTHENTICATION & FIRESTORE SYNC ====================
+    window.switchAuthTab = function(mode) {
+      state.authMode = mode;
+      const loginTab = document.getElementById('tab-login-btn');
+      const regTab = document.getElementById('tab-register-btn');
+      const submitBtn = document.getElementById('auth-submit-btn').querySelector('span');
+
+      if (mode === 'login') {
+        loginTab.classList.add('bg-white', 'text-sage-700', 'shadow-xs');
+        loginTab.classList.remove('text-gray-500');
+        regTab.classList.remove('bg-white', 'text-sage-700', 'shadow-xs');
+        regTab.classList.add('text-gray-500');
+        submitBtn.textContent = 'Masuk ke Akun';
+      } else {
+        regTab.classList.add('bg-white', 'text-sage-700', 'shadow-xs');
+        regTab.classList.remove('text-gray-500');
+        loginTab.classList.remove('bg-white', 'text-sage-700', 'shadow-xs');
+        loginTab.classList.add('text-gray-500');
+        submitBtn.textContent = 'Buat Akun Baru';
+      }
+    };
+
+    // Initialize Auth Flow
+    async function initAuth() {
+      if (!isFirebaseReady) {
+        showScreen('auth-screen');
+        return;
+      }
+
+      try {
+        if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+          await signInWithCustomToken(auth, __initial_auth_token);
+        }
+      } catch (err) {
+        console.warn("Custom token auto sign-in skipped:", err);
+      }
+
+      onAuthStateChanged(auth, async (user) => {
+        if (user) {
+          state.user = user;
+          document.getElementById('profile-account-email').textContent =
+            user.email || `Sesi Cloud (${user.uid.slice(0, 8)}...)`;
+          await loadUserWorkspace(user);
+        } else {
+          cleanupListeners();
+          state.user = null;
+          state.babyProfile = null;
+          showScreen('auth-screen');
+        }
+      });
+    }
+
+    // Email/Password Submit
+    document.getElementById('auth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!isFirebaseReady) return showToast('Layanan cloud belum tersedia.', 'error');
+
+      const email = document.getElementById('auth-email').value.trim();
+      const password = document.getElementById('auth-password').value;
+      const btn = document.getElementById('auth-submit-btn');
+      btn.disabled = true;
+
+      try {
+        if (state.authMode === 'login') {
+          await signInWithEmailAndPassword(auth, email, password);
+          showToast('Berhasil masuk!');
+        } else {
+          await createUserWithEmailAndPassword(auth, email, password);
+          showToast('Akun berhasil dibuat!');
+        }
+      } catch (err) {
+        let msg = 'Gagal memproses autentikasi.';
+        if (err.code === 'auth/invalid-credential' || err.code === 'auth/wrong-password') {
+          msg = 'Email atau kata sandi salah.';
+        } else if (err.code === 'auth/email-already-in-use') {
+          msg = 'Email sudah terdaftar. Silakan masuk.';
+        } else if (err.code === 'auth/weak-password') {
+          msg = 'Kata sandi minimal 6 karakter.';
+        }
+        showToast(msg, 'error');
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    // Google Sign-In
+    document.getElementById('google-signin-btn').addEventListener('click', async () => {
+      if (!isFirebaseReady) return;
+      const provider = new GoogleAuthProvider();
+      try {
+        await signInWithPopup(auth, provider);
+        showToast('Berhasil masuk dengan Google!');
+      } catch (err) {
+        if (err.code === 'auth/popup-blocked' || err.code === 'auth/cancelled-popup-request' || err.code === 'auth/unauthorized-domain') {
+          showToast('Popup Google diblokir browser. Gunakan "Akses Cepat Cloud" atau Email.', 'info');
+        } else {
+          showToast('Gagal login Google. Coba Akses Cepat Cloud.', 'error');
+        }
+      }
+    });
+
+    // Quick Cloud Sign-In (Anonymous Firebase Auth)
+    document.getElementById('guest-signin-btn').addEventListener('click', async () => {
+      if (!isFirebaseReady) return;
+      try {
+        await signInAnonymously(auth);
+        showToast('Terhubung ke Cloud Sync!');
+      } catch (err) {
+        showToast('Gagal menghubungkan sesi cloud.', 'error');
+      }
+    });
+
+    // Logout
+    document.getElementById('logout-btn').addEventListener('click', async () => {
+      if (!isFirebaseReady) return;
+      try {
+        await signOut(auth);
+        showToast('Berhasil keluar dari akun.');
+      } catch (err) {
+        showToast('Gagal keluar akun.', 'error');
+      }
+    });
+
+    // Load User's Family Mapping & Baby Profile
+    async function loadUserWorkspace(user) {
+      if (!user || !db) return;
+      showScreen('loading-screen');
+
+      try {
+        // Check user mapping in private user path: /artifacts/{appId}/users/{userId}/settings/account
+        const userSettingRef = doc(db, 'artifacts', appId, 'users', user.uid, 'settings', 'account');
+        const userSettingSnap = await getDoc(userSettingRef);
+
+        if (userSettingSnap.exists() && userSettingSnap.data().familyId) {
+          state.familyId = userSettingSnap.data().familyId;
+        } else {
+          state.familyId = user.uid;
+          await setDoc(userSettingRef, { familyId: state.familyId, updatedAt: new Date().toISOString() }, { merge: true });
+        }
+
+        // Check if baby profile exists in shared public family path: /artifacts/{appId}/public/data/profiles/{familyId}
+        const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', state.familyId);
+        const profileSnap = await getDoc(profileRef);
+
+        if (profileSnap.exists() && profileSnap.data().name) {
+          subscribeToFamilyData(state.familyId);
+          showScreen('main-app');
+        } else {
+          document.getElementById('setup-dob').value = getLocalDateInputString();
+          showScreen('setup-screen');
+        }
+      } catch (err) {
+        console.error("Error loading workspace:", err);
+        showToast('Gagal memuat data cloud.', 'error');
+        showScreen('setup-screen');
+      }
+    }
+
+    function cleanupListeners() {
+      if (state.unsubFeedings) { state.unsubFeedings(); state.unsubFeedings = null; }
+      if (state.unsubGrowth) { state.unsubGrowth(); state.unsubGrowth = null; }
+      if (state.unsubProfile) { state.unsubProfile(); state.unsubProfile = null; }
+    }
+
+    // Real-Time Firestore Listeners (RULE 1 & RULE 2 compliant: simple collection queries, sort in JS)
+    function subscribeToFamilyData(familyId) {
+      if (!state.user || !db) return;
+      cleanupListeners();
+
+      // 1. Profile Listener
+      const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', familyId);
+      state.unsubProfile = onSnapshot(profileRef, (snap) => {
+        if (snap.exists()) {
+          state.babyProfile = snap.data();
+          updateProfileUI();
+        }
+      }, (err) => console.error("Profile sync error:", err));
+
+      // 2. Feedings Collection Listener
+      const feedingsCol = collection(db, 'artifacts', appId, 'public', 'data', `feedings_${familyId}`);
+      state.unsubFeedings = onSnapshot(feedingsCol, (snapshot) => {
+        const items = [];
+        snapshot.forEach(d => items.push({ id: d.id, ...d.data() }));
+        // Sort newest first in memory
+        items.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+        state.feedings = items;
+        renderDashboardAndTimeline();
+      }, (err) => console.error("Feedings sync error:", err));
+
+      // 3. Growth Logs Collection Listener
+      const growthCol = collection(db, 'artifacts', appId, 'public', 'data', `growth_${familyId}`);
+      state.unsubGrowth = onSnapshot(growthCol, (snapshot) => {
+        const items = [];
+        snapshot.forEach(d => items.push({ id: d.id, ...d.data() }));
+        // Sort chronologically ascending for chart
+        items.sort((a, b) => new Date(a.date) - new Date(b.date));
+        state.growthLogs = items;
+        renderDashboardAndTimeline();
+        renderGrowthSection();
+      }, (err) => console.error("Growth sync error:", err));
+    }
+
+    // ==================== 7. BABY PROFILE SETUP & FAMILY SHARING ====================
+    document.getElementById('setup-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.user || !db) return;
+
+      const name = document.getElementById('setup-name').value.trim();
+      const dob = document.getElementById('setup-dob').value;
+      const gender = document.querySelector('input[name="setup-gender"]:checked').value;
+      const birthWeight = parseFloat(document.getElementById('setup-birth-weight').value);
+      const birthLength = parseFloat(document.getElementById('setup-birth-length').value);
+
+      try {
+        const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', state.familyId);
+        await setDoc(profileRef, {
+          name,
+          dob,
+          gender,
+          createdAt: new Date().toISOString()
+        });
+
+        // If birth weight & length provided, automatically log initial 0-month growth record
+        if (!isNaN(birthWeight) && !isNaN(birthLength)) {
+          const growthCol = collection(db, 'artifacts', appId, 'public', 'data', `growth_${state.familyId}`);
+          await addDoc(growthCol, {
+            date: dob,
+            weight: birthWeight,
+            length: birthLength,
+            head: null,
+            note: 'Data Lahir',
+            createdAt: new Date().toISOString()
+          });
+        }
+
+        subscribeToFamilyData(state.familyId);
+        showScreen('main-app');
+        showToast(`Selamat datang, ${name}!`);
+      } catch (err) {
+        console.error(err);
+        showToast('Gagal menyimpan profil bayi.', 'error');
+      }
+    });
+
+    // Join existing family code on setup screen
+    document.getElementById('join-family-btn').addEventListener('click', async () => {
+      const code = document.getElementById('join-family-code-input').value.trim();
+      if (!code) return showToast('Masukkan kode keluarga terlebih dahulu.', 'error');
+      await linkToFamilyCode(code);
+    });
+
+    window.joinFamilyFromProfile = async function() {
+      const code = document.getElementById('profile-join-code').value.trim();
+      if (!code) return showToast('Masukkan kode keluarga pasangan.', 'error');
+      await linkToFamilyCode(code);
+    };
+
+    async function linkToFamilyCode(targetFamilyId) {
+      if (!state.user || !db) return;
+      try {
+        const targetProfileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', targetFamilyId);
+        const snap = await getDoc(targetProfileRef);
+        if (!snap.exists()) {
+          return showToast('Kode keluarga tidak ditemukan.', 'error');
+        }
+
+        state.familyId = targetFamilyId;
+        const userSettingRef = doc(db, 'artifacts', appId, 'users', state.user.uid, 'settings', 'account');
+        await setDoc(userSettingRef, { familyId: targetFamilyId, updatedAt: new Date().toISOString() }, { merge: true });
+
+        subscribeToFamilyData(targetFamilyId);
+        showScreen('main-app');
+        showToast(`Berhasil terhubung ke profil ${snap.data().name}!`);
+      } catch (err) {
+        showToast('Gagal menautkan kode keluarga.', 'error');
+      }
+    }
+
+    window.copyFamilyCode = function() {
+      if (!state.familyId) return;
+      const tempInput = document.createElement('input');
+      tempInput.value = state.familyId;
+      document.body.appendChild(tempInput);
+      tempInput.select();
+      document.execCommand('copy');
+      document.body.removeChild(tempInput);
+      showToast('Kode sinkronisasi keluarga disalin!');
+    };
+
+    // Update Profile Form
+    document.getElementById('edit-profile-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.user || !db || !state.familyId) return;
+
+      const name = document.getElementById('profile-name').value.trim();
+      const dob = document.getElementById('profile-dob').value;
+      const gender = document.getElementById('profile-gender').value;
+
+      try {
+        const profileRef = doc(db, 'artifacts', appId, 'public', 'data', 'profiles', state.familyId);
+        await setDoc(profileRef, { name, dob, gender }, { merge: true });
+        showToast('Profil bayi diperbarui!');
+        renderGrowthSection();
+      } catch (err) {
+        showToast('Gagal memperbarui profil.', 'error');
+      }
+    });
+
+    function updateProfileUI() {
+      const p = state.babyProfile;
+      if (!p) return;
+
+      const age = calculateBabyAge(p.dob);
+      const genderText = p.gender === 'P' ? 'Perempuan' : 'Laki-laki';
+
+      document.getElementById('header-avatar').textContent = p.name.charAt(0).toUpperCase();
+      document.getElementById('header-baby-name').textContent = p.name;
+      document.getElementById('header-gender-badge').textContent = genderText;
+      document.getElementById('header-baby-age').textContent = `Usia: ${age.text}`;
+      document.getElementById('who-gender-label').textContent = genderText;
+
+      document.getElementById('profile-name').value = p.name;
+      document.getElementById('profile-dob').value = p.dob;
+      document.getElementById('profile-gender').value = p.gender;
+      document.getElementById('family-sync-code-display').textContent = state.familyId;
+
+      const todayFormatted = new Date().toLocaleDateString('id-ID', { weekday: 'short', day: 'numeric', month: 'short' });
+      document.getElementById('today-date-label').textContent = todayFormatted;
+    }
+
+    // ==================== 8. LIVE BREASTFEEDING TIMER LOGIC ====================
+    window.toggleBreastTimer = function(side) {
+      const t = state.timer;
+
+      if (t.activeSide === side) {
+        // Pause current side
+        clearInterval(t.intervalId);
+        t.intervalId = null;
+        t.activeSide = null;
+      } else {
+        // Switch or start side
+        if (t.intervalId) clearInterval(t.intervalId);
+        t.activeSide = side;
+        t.intervalId = setInterval(() => {
+          if (state.timer.activeSide === 'Kiri') {
+            state.timer.leftSeconds += 1;
+          } else if (state.timer.activeSide === 'Kanan') {
+            state.timer.rightSeconds += 1;
+          }
+          updateTimerUI();
+        }, 1000);
+      }
+      updateTimerUI();
+    };
+
+    window.resetBreastTimer = function() {
+      if (state.timer.intervalId) clearInterval(state.timer.intervalId);
+      state.timer = { activeSide: null, leftSeconds: 0, rightSeconds: 0, intervalId: null };
+      document.getElementById('asi-notes').value = '';
+      updateTimerUI();
+      showToast('Timer direset.', 'info');
+    };
+
+    function updateTimerUI() {
+      const { activeSide, leftSeconds, rightSeconds } = state.timer;
+      const totalSeconds = leftSeconds + rightSeconds;
+
+      document.getElementById('timer-main-display').textContent = formatDurationMMSS(totalSeconds);
+      document.getElementById('display-left-time').textContent = formatDurationMMSS(leftSeconds);
+      document.getElementById('display-right-time').textContent = formatDurationMMSS(rightSeconds);
+
+      const statusPill = document.getElementById('timer-status-pill');
+      const btnLeft = document.getElementById('btn-timer-left');
+      const btnRight = document.getElementById('btn-timer-right');
+      const lblLeft = document.getElementById('label-left-action');
+      const lblRight = document.getElementById('label-right-action');
+      const homeBanner = document.getElementById('home-active-timer-banner');
+
+      // Reset classes
+      btnLeft.classList.remove('border-sage-500', 'bg-sage-50', 'timer-active-ring');
+      btnRight.classList.remove('border-sage-500', 'bg-sage-50', 'timer-active-ring');
+
+      if (activeSide === 'Kiri') {
+        statusPill.textContent = '● Menyusui Sisi Kiri';
+        statusPill.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-sage-100 text-sage-700 mb-4';
+        btnLeft.classList.add('border-sage-500', 'bg-sage-50', 'timer-active-ring');
+        lblLeft.textContent = 'Ketuk Jeda';
+        lblRight.textContent = 'Pindah Kanan';
+        homeBanner.classList.remove('hidden');
+        document.getElementById('home-banner-timer-text').textContent = `${formatDurationMMSS(totalSeconds)} • Sisi Kiri`;
+      } else if (activeSide === 'Kanan') {
+        statusPill.textContent = '● Menyusui Sisi Kanan';
+        statusPill.className = 'inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-sage-100 text-sage-700 mb-4';
+        btnRight.classList.add('border-sage-500', 'bg-sage-50', 'timer-active-ring');
+        lblRight.textContent = 'Ketuk Jeda';
+        lblLeft.textContent = 'Pindah Kiri';
+        homeBanner.classList.remove('hidden');
+        document.getElementById('home-banner-timer-text').textContent = `${formatDurationMMSS(totalSeconds)} • Sisi Kanan`;
+      } else {
+        homeBanner.classList.add('hidden');
+        if (totalSeconds > 0) {
+          statusPill.textContent = 'Sesi Dijeda';
+          statusPill.className = 'inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-amberwarm-100 text-amberwarm-600 mb-4';
+          lblLeft.textContent = 'Lanjut Kiri';
+          lblRight.textContent = 'Lanjut Kanan';
+        } else {
+          statusPill.textContent = 'Siap Memulai Sesi';
+          statusPill.className = 'inline-flex items-center gap-1.5 text-xs font-semibold px-3 py-1 rounded-full bg-cream-100 text-gray-500 mb-4';
+          lblLeft.textContent = 'Ketuk Mulai';
+          lblRight.textContent = 'Ketuk Mulai';
+        }
+      }
+    }
+
+    window.saveBreastfeedingSession = async function() {
+      if (!state.user || !db || !state.familyId) return;
+      const { leftSeconds, rightSeconds } = state.timer;
+      const totalSeconds = leftSeconds + rightSeconds;
+
+      if (totalSeconds < 5) {
+        return showToast('Jalankan timer minimal beberapa detik sebelum menyimpan.', 'error');
+      }
+
+      if (state.timer.intervalId) clearInterval(state.timer.intervalId);
+
+      const leftMin = Math.round(leftSeconds / 60 * 10) / 10;
+      const rightMin = Math.round(rightSeconds / 60 * 10) / 10;
+      const totalMin = Math.max(1, Math.round(totalSeconds / 60));
+      const notes = document.getElementById('asi-notes').value.trim();
+
+      let sideSummary = [];
+      if (leftSeconds > 0) sideSummary.push(`Kiri ${Math.max(1, Math.round(leftSeconds / 60))}m`);
+      if (rightSeconds > 0) sideSummary.push(`Kanan ${Math.max(1, Math.round(rightSeconds / 60))}m`);
+
+      try {
+        const feedingsCol = collection(db, 'artifacts', appId, 'public', 'data', `feedings_${state.familyId}`);
+        await addDoc(feedingsCol, {
+          category: 'asi',
+          leftMinutes: Math.round(leftSeconds / 60),
+          rightMinutes: Math.round(rightSeconds / 60),
+          totalMinutes: totalMin,
+          leftSeconds,
+          rightSeconds,
+          summaryText: sideSummary.join(' • '),
+          notes,
+          timestamp: new Date().toISOString()
+        });
+
+        state.timer = { activeSide: null, leftSeconds: 0, rightSeconds: 0, intervalId: null };
+        document.getElementById('asi-notes').value = '';
+        updateTimerUI();
+        showToast('Sesi menyusui berhasil disimpan!');
+        navigateTo('home');
+      } catch (err) {
+        console.error(err);
+        showToast('Gagal menyimpan sesi menyusui.', 'error');
+      }
+    };
+
+    // Manual ASI Form Submit
+    document.getElementById('manual-asi-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.user || !db || !state.familyId) return;
+
+      const leftMin = parseInt(document.getElementById('manual-asi-left').value) || 0;
+      const rightMin = parseInt(document.getElementById('manual-asi-right').value) || 0;
+      const totalMin = leftMin + rightMin;
+      if (totalMin <= 0) return showToast('Masukkan durasi menyusui minimal 1 menit.', 'error');
+
+      const timeVal = document.getElementById('manual-asi-time').value;
+      const timestamp = timeVal ? new Date(timeVal).toISOString() : new Date().toISOString();
+
+      let sideSummary = [];
+      if (leftMin > 0) sideSummary.push(`Kiri ${leftMin}m`);
+      if (rightMin > 0) sideSummary.push(`Kanan ${rightMin}m`);
+
+      try {
+        const feedingsCol = collection(db, 'artifacts', appId, 'public', 'data', `feedings_${state.familyId}`);
+        await addDoc(feedingsCol, {
+          category: 'asi',
+          leftMinutes: leftMin,
+          rightMinutes: rightMin,
+          totalMinutes: totalMin,
+          summaryText: sideSummary.join(' • '),
+          notes: 'Input manual',
+          timestamp
+        });
+        showToast('Catatan menyusui manual tersimpan!');
+        navigateTo('home');
+      } catch (err) {
+        showToast('Gagal menyimpan catatan.', 'error');
+      }
+    });
+
+    // ==================== 9. BOTTLE & MPASI LOGGING ====================
+    window.setBottleVolume = function(ml) {
+      document.getElementById('bottle-volume').value = ml;
+      syncVolumeBadge(ml);
+      document.querySelectorAll('.vol-chip').forEach(btn => {
+        if (parseInt(btn.textContent) === ml) {
+          btn.className = 'vol-chip py-2 rounded-xl bg-amberwarm-100 text-amberwarm-600 ring-1 ring-amberwarm-500 text-xs font-bold transition';
+        } else {
+          btn.className = 'vol-chip py-2 rounded-xl bg-cream-100 hover:bg-amberwarm-100 text-xs font-bold text-gray-700 transition';
+        }
+      });
+    };
+
+    window.syncVolumeBadge = function(val) {
+      document.getElementById('bottle-volume-badge').textContent = `${val || 0} ml`;
+    };
+
+    document.getElementById('bottle-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.user || !db || !state.familyId) return;
+
+      const milkType = document.querySelector('input[name="bottle-type"]:checked').value;
+      const volumeMl = parseInt(document.getElementById('bottle-volume').value) || 0;
+      const timeVal = document.getElementById('bottle-time').value;
+      const notes = document.getElementById('bottle-notes').value.trim();
+
+      if (volumeMl <= 0) return showToast('Masukkan volume susu yang valid.', 'error');
+
+      try {
+        const feedingsCol = collection(db, 'artifacts', appId, 'public', 'data', `feedings_${state.familyId}`);
+        await addDoc(feedingsCol, {
+          category: 'botol',
+          milkType,
+          volumeMl,
+          notes,
+          timestamp: timeVal ? new Date(timeVal).toISOString() : new Date().toISOString()
+        });
+        document.getElementById('bottle-notes').value = '';
+        showToast(`Catatan ${milkType} (${volumeMl} ml) disimpan!`);
+        navigateTo('home');
+      } catch (err) {
+        showToast('Gagal menyimpan catatan botol.', 'error');
+      }
+    });
+
+    document.getElementById('mpasi-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.user || !db || !state.familyId) return;
+
+      const schedule = document.getElementById('mpasi-schedule').value;
+      const menu = document.getElementById('mpasi-menu').value.trim();
+      const portion = document.querySelector('input[name="mpasi-portion"]:checked').value;
+      const timeVal = document.getElementById('mpasi-time').value;
+      const notes = document.getElementById('mpasi-notes').value.trim();
+
+      try {
+        const feedingsCol = collection(db, 'artifacts', appId, 'public', 'data', `feedings_${state.familyId}`);
+        await addDoc(feedingsCol, {
+          category: 'mpasi',
+          schedule,
+          menu,
+          portion,
+          notes,
+          timestamp: timeVal ? new Date(timeVal).toISOString() : new Date().toISOString()
+        });
+        document.getElementById('mpasi-menu').value = '';
+        document.getElementById('mpasi-notes').value = '';
+        showToast('Catatan MPASI berhasil disimpan!');
+        navigateTo('home');
+      } catch (err) {
+        showToast('Gagal menyimpan catatan MPASI.', 'error');
+      }
+    });
+
+    // ==================== 10. DASHBOARD & TIMELINE RENDERING ====================
+    function renderDashboardAndTimeline() {
+      const todayStr = new Date().toDateString();
+      const todayFeedings = state.feedings.filter(f => new Date(f.timestamp).toDateString() === todayStr);
+
+      // Calculate Today's ASI Stats
+      let totalLeftMin = 0;
+      let totalRightMin = 0;
+      todayFeedings.filter(f => f.category === 'asi').forEach(f => {
+        totalLeftMin += (f.leftMinutes || 0);
+        totalRightMin += (f.rightMinutes || 0);
+      });
+      const totalAsiMin = totalLeftMin + totalRightMin;
+      document.getElementById('stat-breast-total').textContent = `${totalAsiMin} mnt`;
+      document.getElementById('stat-breast-detail').textContent = `Kiri ${totalLeftMin}m • Kanan ${totalRightMin}m`;
+
+      // Calculate Today's Bottle Stats
+      const todayBottles = todayFeedings.filter(f => f.category === 'botol');
+      const totalMl = todayBottles.reduce((sum, item) => sum + (item.volumeMl || 0), 0);
+      document.getElementById('stat-bottle-total').textContent = `${totalMl} ml`;
+      document.getElementById('stat-bottle-count').textContent = `${todayBottles.length} kali minum`;
+
+      // Calculate Today's MPASI Stats
+      const todayMpasi = todayFeedings.filter(f => f.category === 'mpasi');
+      document.getElementById('stat-mpasi-count').textContent = `${todayMpasi.length}x makan`;
+      document.getElementById('stat-mpasi-last').textContent =
+        todayMpasi.length > 0 ? todayMpasi[0].menu : 'Belum ada catatan';
+
+      // Latest Growth Stats
+      if (state.growthLogs.length > 0) {
+        const latest = state.growthLogs[state.growthLogs.length - 1];
+        document.getElementById('stat-latest-weight').textContent = `${latest.weight} kg`;
+        document.getElementById('stat-latest-length').textContent = `Panjang: ${latest.length} cm`;
+      } else {
+        document.getElementById('stat-latest-weight').textContent = `-- kg`;
+        document.getElementById('stat-latest-length').textContent = `Panjang: -- cm`;
+      }
+
+      // Render Timeline List (Latest 15 entries)
+      const listEl = document.getElementById('feeding-timeline-list');
+      document.getElementById('history-count-badge').textContent = `${state.feedings.length} catatan`;
+
+      if (state.feedings.length === 0) {
+        listEl.innerHTML = `
+          <div class="bg-white rounded-3xl p-8 text-center border border-cream-200/70">
+            <div class="w-12 h-12 rounded-2xl bg-cream-100 text-gray-400 flex items-center justify-center mx-auto mb-3">
+              <i data-lucide="calendar-heart" class="w-6 h-6"></i>
+            </div>
+            <p class="text-sm font-semibold text-gray-700">Belum ada riwayat makan</p>
+            <p class="text-xs text-gray-400 mt-1">Ketuk tombol "Timer ASI" atau "Botol ASIP" di atas untuk mulai mencatat.</p>
+          </div>
+        `;
+        lucide.createIcons();
+        return;
+      }
+
+      listEl.innerHTML = state.feedings.slice(0, 20).map(item => {
+        let iconHtml = '';
+        let title = '';
+        let subtitle = '';
+        let badge = '';
+
+        if (item.category === 'asi') {
+          iconHtml = `<div class="w-10 h-10 rounded-2xl bg-sage-50 text-sage-600 flex items-center justify-center shrink-0"><i data-lucide="clock" class="w-5 h-5"></i></div>`;
+          title = `ASI Langsung • ${item.totalMinutes} menit`;
+          subtitle = item.summaryText || 'Sesi menyusui';
+          badge = `<span class="text-[11px] font-bold text-sage-700 bg-sage-50 px-2 py-0.5 rounded-full">ASI</span>`;
+        } else if (item.category === 'botol') {
+          iconHtml = `<div class="w-10 h-10 rounded-2xl bg-amberwarm-100 text-amberwarm-600 flex items-center justify-center shrink-0"><i data-lucide="milk" class="w-5 h-5"></i></div>`;
+          title = `${item.milkType} • ${item.volumeMl} ml`;
+          subtitle = item.notes || 'Minum dari botol';
+          badge = `<span class="text-[11px] font-bold text-amberwarm-600 bg-amberwarm-100 px-2 py-0.5 rounded-full">Botol</span>`;
+        } else {
+          iconHtml = `<div class="w-10 h-10 rounded-2xl bg-terracotta-100 text-terracotta-600 flex items-center justify-center shrink-0"><i data-lucide="utensils" class="w-5 h-5"></i></div>`;
+          title = `${item.schedule} (${item.portion})`;
+          subtitle = item.menu;
+          badge = `<span class="text-[11px] font-bold text-terracotta-600 bg-terracotta-100 px-2 py-0.5 rounded-full">MPASI</span>`;
+        }
+
+        const extraNote = (item.category === 'asi' && item.notes) ? ` • ${item.notes}` : '';
+
+        return `
+          <div class="bg-white p-3.5 rounded-2xl shadow-2xs border border-cream-200/70 flex items-center justify-between gap-3">
+            <div class="flex items-center gap-3 min-w-0">
+              ${iconHtml}
+              <div class="min-w-0">
+                <div class="flex items-center gap-2">
+                  <p class="font-display font-bold text-sm text-gray-800 truncate">${title}</p>
+                  ${badge}
+                </div>
+                <p class="text-xs text-gray-500 truncate mt-0.5">${subtitle}${extraNote}</p>
+                <p class="text-[11px] text-gray-400 mt-0.5">${formatTimeID(item.timestamp)}</p>
+              </div>
+            </div>
+            <button type="button" onclick="confirmDeleteFeeding('${item.id}')" class="p-2 text-gray-300 hover:text-terracotta-500 transition shrink-0" title="Hapus">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    window.confirmDeleteFeeding = function(docId) {
+      openConfirmModal(
+        'Hapus Catatan Ini?',
+        'Riwayat menyusui atau makan ini akan dihapus dari cloud.',
+        async () => {
+          if (!state.user || !db || !state.familyId) return;
+          try {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `feedings_${state.familyId}`, docId));
+            showToast('Catatan berhasil dihapus.', 'info');
+          } catch (err) {
+            showToast('Gagal menghapus catatan.', 'error');
+          }
+        }
+      );
+    };
+
+    // ==================== 11. GROWTH TRACKING & WHO CURVE CHART ====================
+    window.toggleGrowthForm = function() {
+      const form = document.getElementById('growth-form');
+      form.classList.toggle('hidden');
+      if (!form.classList.contains('hidden')) {
+        document.getElementById('growth-date').value = getLocalDateInputString();
+      }
+    };
+
+    window.switchGrowthChart = function(metric) {
+      state.activeChartMetric = metric;
+      const wTab = document.getElementById('chart-tab-weight');
+      const lTab = document.getElementById('chart-tab-length');
+
+      if (metric === 'weight') {
+        wTab.classList.add('bg-white', 'text-sage-700', 'shadow-2xs');
+        wTab.classList.remove('text-gray-500');
+        lTab.classList.remove('bg-white', 'text-sage-700', 'shadow-2xs');
+        lTab.classList.add('text-gray-500');
+      } else {
+        lTab.classList.add('bg-white', 'text-sage-700', 'shadow-2xs');
+        lTab.classList.remove('text-gray-500');
+        wTab.classList.remove('bg-white', 'text-sage-700', 'shadow-2xs');
+        wTab.classList.add('text-gray-500');
+      }
+      renderWHOChart();
+    };
+
+    document.getElementById('growth-form').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (!state.user || !db || !state.familyId) return;
+
+      const date = document.getElementById('growth-date').value;
+      const weight = parseFloat(document.getElementById('growth-weight').value);
+      const length = parseFloat(document.getElementById('growth-length').value);
+      const headVal = document.getElementById('growth-head').value;
+      const head = headVal ? parseFloat(headVal) : null;
+
+      try {
+        const growthCol = collection(db, 'artifacts', appId, 'public', 'data', `growth_${state.familyId}`);
+        await addDoc(growthCol, {
+          date,
+          weight,
+          length,
+          head,
+          createdAt: new Date().toISOString()
+        });
+        document.getElementById('growth-weight').value = '';
+        document.getElementById('growth-length').value = '';
+        document.getElementById('growth-head').value = '';
+        document.getElementById('growth-form').classList.add('hidden');
+        showToast('Data pertumbuhan disimpan & kurva WHO diperbarui!');
+      } catch (err) {
+        showToast('Gagal menyimpan data pertumbuhan.', 'error');
+      }
+    });
+
+    function renderGrowthSection() {
+      renderWHOChart();
+      updateWHOInsight();
+      renderGrowthHistoryList();
+    }
+
+    function renderWHOChart() {
+      const ctx = document.getElementById('who-growth-chart');
+      if (!ctx) return;
+
+      const gender = state.babyProfile?.gender === 'P' ? 'P' : 'L';
+      const metric = state.activeChartMetric; // 'weight' | 'length'
+      const standard = WHO_STANDARDS[gender][metric];
+      const unit = metric === 'weight' ? 'kg' : 'cm';
+
+      // Map baby's measurements to { x: exactAgeInMonths, y: value }
+      const babyPoints = state.growthLogs.map(log => {
+        const ageObj = state.babyProfile?.dob
+          ? calculateBabyAge(state.babyProfile.dob, new Date(log.date + 'T12:00:00'))
+          : { exactMonths: 0 };
+        return {
+          x: Math.min(12, Math.max(0, ageObj.exactMonths)),
+          y: metric === 'weight' ? log.weight : log.length,
+          dateStr: log.date
+        };
+      });
+
+      if (state.whoChartInstance) {
+        state.whoChartInstance.destroy();
+      }
+
+      const monthLabels = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12];
+
+      state.whoChartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          datasets: [
+            {
+              label: `${state.babyProfile?.name || 'Bayi'} (${unit})`,
+              data: babyPoints,
+              borderColor: '#5B7A62',
+              backgroundColor: '#5B7A62',
+              borderWidth: 3,
+              pointRadius: 5,
+              pointHoverRadius: 7,
+              pointBackgroundColor: '#FFFFFF',
+              pointBorderColor: '#5B7A62',
+              pointBorderWidth: 2.5,
+              tension: 0.25,
+              order: 1
+            },
+            {
+              label: 'P97 (Batas Atas WHO)',
+              data: monthLabels.map((m, i) => ({ x: m, y: standard.p97[i] })),
+              borderColor: 'rgba(124, 154, 130, 0.35)',
+              borderDash: [4, 4],
+              borderWidth: 1.2,
+              pointRadius: 0,
+              fill: false,
+              tension: 0.4,
+              order: 3
+            },
+            {
+              label: 'P50 (Median WHO)',
+              data: monthLabels.map((m, i) => ({ x: m, y: standard.p50[i] })),
+              borderColor: '#10B981',
+              borderWidth: 1.8,
+              pointRadius: 0,
+              fill: false,
+              tension: 0.4,
+              order: 2
+            },
+            {
+              label: 'P3 (Batas Bawah WHO)',
+              data: monthLabels.map((m, i) => ({ x: m, y: standard.p3[i] })),
+              borderColor: 'rgba(124, 154, 130, 0.35)',
+              backgroundColor: 'rgba(198, 217, 202, 0.22)',
+              borderDash: [4, 4],
+              borderWidth: 1.2,
+              pointRadius: 0,
+              fill: '-2', // Fill band between P3 and P97
+              tension: 0.4,
+              order: 4
+            }
+          ]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'nearest',
+            intersect: false
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#2C352E',
+              padding: 10,
+              cornerRadius: 12,
+              titleFont: { family: 'Inter', size: 11 },
+              bodyFont: { family: 'Inter', size: 12, weight: 'bold' },
+              callbacks: {
+                title: (items) => `Usia: ${items[0].parsed.x.toFixed(1)} bulan`,
+                label: (item) => `${item.dataset.label}: ${item.parsed.y} ${unit}`
+              }
+            }
+          },
+          scales: {
+            x: {
+              type: 'linear',
+              min: 0,
+              max: 12,
+              ticks: {
+                stepSize: 2,
+                callback: (val) => `${val} bln`,
+                font: { size: 10, family: 'Inter' },
+                color: '#7A857D'
+              },
+              grid: { color: '#F2EDE4' }
+            },
+            y: {
+              ticks: {
+                callback: (val) => `${val} ${unit}`,
+                font: { size: 10, family: 'Inter' },
+                color: '#7A857D'
+              },
+              grid: { color: '#F2EDE4' }
+            }
+          }
+        }
+      });
+    }
+
+    function updateWHOInsight() {
+      const titleEl = document.getElementById('insight-title');
+      const descEl = document.getElementById('insight-desc');
+
+      if (!state.babyProfile || state.growthLogs.length === 0) {
+        titleEl.textContent = 'Analisis Kurva WHO';
+        descEl.textContent = 'Tambahkan catatan berat & panjang badan untuk melihat posisi persentil si kecil dibanding standar WHO.';
+        return;
+      }
+
+      const latest = state.growthLogs[state.growthLogs.length - 1];
+      const gender = state.babyProfile.gender === 'P' ? 'P' : 'L';
+      const ageObj = calculateBabyAge(state.babyProfile.dob, new Date(latest.date + 'T12:00:00'));
+      const monthIdx = Math.min(12, Math.max(0, Math.round(ageObj.exactMonths)));
+
+      const wStd = WHO_STANDARDS[gender].weight;
+      const lStd = WHO_STANDARDS[gender].length;
+
+      const p3W = wStd.p3[monthIdx];
+      const p50W = wStd.p50[monthIdx];
+      const p97W = wStd.p97[monthIdx];
+
+      let statusText = '';
+      if (latest.weight < p3W) {
+        statusText = `Berat badan (${latest.weight} kg) berada di bawah P3 WHO (${p3W} kg). Disarankan konsultasi dengan dokter anak/posyandu.`;
+      } else if (latest.weight > p97W) {
+        statusText = `Berat badan (${latest.weight} kg) berada di atas P97 WHO (${p97W} kg). Pantau pola asupan bersama dokter anak.`;
+      } else {
+        const relation = latest.weight >= p50W ? 'di atas garis median (P50)' : 'di jalur normal mendekati median (P50)';
+        statusText = `Berat (${latest.weight} kg) dan panjang (${latest.length} cm) pada usia ~${monthIdx} bulan berada ${relation} standar WHO (${p3W}–${p97W} kg).`;
+      }
+
+      titleEl.textContent = `Status Pertumbuhan (${state.babyProfile.name})`;
+      descEl.textContent = statusText;
+    }
+
+    function renderGrowthHistoryList() {
+      const container = document.getElementById('growth-history-list');
+      if (state.growthLogs.length === 0) {
+        container.innerHTML = `
+          <div class="bg-white rounded-3xl p-6 text-center border border-cream-200/70">
+            <p class="text-xs text-gray-500">Belum ada data pengukuran. Ketuk <strong>"+ Catat Ukuran"</strong> di atas.</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Display newest first
+      const reversed = [...state.growthLogs].reverse();
+      container.innerHTML = reversed.map((log, idx) => {
+        const prev = reversed[idx + 1];
+        const diffWeight = prev ? (log.weight - prev.weight).toFixed(2) : null;
+        const diffLength = prev ? (log.length - prev.length).toFixed(1) : null;
+
+        const wBadge = diffWeight !== null
+          ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md ${parseFloat(diffWeight) >= 0 ? 'bg-emerald-50 text-emerald-700' : 'bg-amberwarm-100 text-amberwarm-600'}">${parseFloat(diffWeight) >= 0 ? '+' : ''}${diffWeight} kg</span>`
+          : '';
+        const lBadge = diffLength !== null
+          ? `<span class="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-blue-700">${parseFloat(diffLength) >= 0 ? '+' : ''}${diffLength} cm</span>`
+          : '';
+
+        const ageAtLog = state.babyProfile?.dob
+          ? calculateBabyAge(state.babyProfile.dob, new Date(log.date + 'T12:00:00')).text
+          : '';
+
+        const formattedDate = new Date(log.date + 'T00:00:00').toLocaleDateString('id-ID', {
+          day: 'numeric', month: 'short', year: 'numeric'
+        });
+
+        return `
+          <div class="bg-white p-4 rounded-2xl shadow-2xs border border-cream-200/80 flex items-center justify-between">
+            <div>
+              <div class="flex items-center gap-2">
+                <span class="font-display font-bold text-xs text-gray-800">${formattedDate}</span>
+                <span class="text-[11px] text-sage-700 bg-sage-50 px-2 py-0.5 rounded-full font-medium">${ageAtLog}</span>
+              </div>
+              <div class="flex flex-wrap items-center gap-3 mt-2">
+                <div class="flex items-center gap-1.5">
+                  <span class="text-sm font-extrabold text-gray-800">${log.weight} kg</span>
+                  ${wBadge}
+                </div>
+                <span class="text-gray-300">•</span>
+                <div class="flex items-center gap-1.5">
+                  <span class="text-sm font-extrabold text-gray-800">${log.length} cm</span>
+                  ${lBadge}
+                </div>
+                ${log.head ? `<span class="text-gray-300">•</span><span class="text-xs text-gray-500">LK: ${log.head} cm</span>` : ''}
+              </div>
+            </div>
+            <button type="button" onclick="confirmDeleteGrowth('${log.id}')" class="p-2 text-gray-300 hover:text-terracotta-500 transition">
+              <i data-lucide="trash-2" class="w-4 h-4"></i>
+            </button>
+          </div>
+        `;
+      }).join('');
+
+      lucide.createIcons();
+    }
+
+    window.confirmDeleteGrowth = function(docId) {
+      openConfirmModal(
+        'Hapus Data Pengukuran?',
+        'Data berat dan panjang badan ini akan dihapus dari kurva WHO.',
+        async () => {
+          if (!state.user || !db || !state.familyId) return;
+          try {
+            await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', `growth_${state.familyId}`, docId));
+            showToast('Data pertumbuhan dihapus.', 'info');
+          } catch (err) {
+            showToast('Gagal menghapus data.', 'error');
+          }
+        }
+      );
+    };
+
+    // ==================== 12. BOOTSTRAP APP ====================
+    window.addEventListener('DOMContentLoaded', () => {
+      lucide.createIcons();
+      initAuth();
+    });
+  </script>
+</body>
+</html>
